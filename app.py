@@ -16,7 +16,8 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
-
+from fastapi.responses import FileResponse
+from pathlib import Path
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
@@ -179,6 +180,13 @@ async def follow(code: str, request: Request, db: AsyncSession = Depends(get_db)
     await db.commit()
 
     return RedirectResponse(url=url.target, status_code=status.HTTP_302_FOUND)
+
+
+@app.get("/", include_in_schema=False)
+async def index():
+    return FileResponse(Path(__file__).parent / "index.htm")
+
+
 if __name__ == "__main__":
     import uvicorn
 

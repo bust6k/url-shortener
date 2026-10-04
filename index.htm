@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>URL Shortener</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#161a21; --line:#242a34; --fg:#e6e9ef; --mut:#8b95a7;
+    --acc:#5b8cff; --ok:#3ecf8e; --err:#ff6b6b;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:var(--bg); color:var(--fg);
+    font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    display:flex; justify-content:center; padding:40px 16px;
+  }
+  main{width:100%;max-width:640px}
+  h1{margin:0 0 4px;font-size:18px;letter-spacing:.5px}
+  .sub{color:var(--mut);margin:0 0 24px;font-size:12px}
+  .sub .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--mut);margin-right:6px;vertical-align:middle;transition:background .2s}
+  .sub .dot.ok{background:var(--ok)}
+  .sub .dot.err{background:var(--err)}
+
+  section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px}
+  section h2{margin:0 0 12px;font-size:12px;color:var(--mut);font-weight:500;text-transform:uppercase;letter-spacing:1px}
+
+  .row{display:flex;gap:8px}
+  input{
+    flex:1;background:#0d1016;border:1px solid var(--line);color:var(--fg);
+    padding:10px 12px;border-radius:8px;font:inherit;outline:none;min-width:0;
+  }
+  input:focus{border-color:var(--acc)}
+  button{
+    background:var(--acc);color:#fff;border:0;padding:10px 16px;border-radius:8px;
+    font:inherit;cursor:pointer;white-space:nowrap;
+  }
+  button:hover{filter:brightness(1.1)}
+  button:disabled{opacity:.5;cursor:default}
+
+  .out{margin-top:12px;font-size:13px;word-break:break-all}
+  .out a{color:var(--acc);text-decoration:none}
+  .out a:hover{text-decoration:underline}
+  .out .k{color:var(--mut)}
+  .err{color:var(--err)}
+  pre{margin:8px 0 0;padding:10px;background:#0d1016;border:1px solid var(--line);border-radius:8px;overflow:auto;font-size:12px;color:var(--mut)}
+</style>
+</head>
+<body>
+<main>
+  <h1>URL Shortener</h1>
+  <p class="sub"><span id="dot" class="dot"></span><span id="health">checking…</span></p>
+
+  <section>
+    <h2>Shorten</h2>
+    <form id="shortenForm" class="row">
+      <input id="url" type="url" placeholder="https://example.com/very/long/path" required>
+      <button type="submit">Shorten</button>
+    </form>
+    <div id="shortenOut" class="out"></div>
+  </section>
+
+  <section>
+    <h2>Stats</h2>
+    <form id="statsForm" class="row">
+      <input id="code" type="text" placeholder="code" required>
+      <button type="submit">Get</button>
+    </form>
+    <div id="statsOut" class="out"></div>
+  </section>
+</main>
+
+<script>
+const API = location.origin.startsWith('http') ? '' : 'http://localhost:8000';
+const $ = id => document.getElementById(id);
+
+const dot = $('dot'), health = $('health');
+fetch(API + '/health')
+  .then(r => r.ok ? r.json() : Promise.reject(r.status))
+  .then(() => { dot.classList.add('ok'); health.textContent = 'online'; })
+  .catch(e => { dot.classList.add('err'); health.textContent = 'offline (' + e + ')'; });
+
+function esc(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+$('shortenForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn = e.target.querySelector('button');
+  const out = $('shortenOut');
+  btn.disabled = true; out.innerHTML = '';
+  try {
+    const r = await fetch(API + '/shorten', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ url: $('url').value })
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || r.status);
+    out.innerHTML =
+      `<div><span class="k">short:</span> <a href="${esc(data.short)}" target="_blank">${esc(data.short)}</a></div>` +
+      `<div><span class="k">code:</span> ${esc(data.code)}</div>` +
+      `<div><span class="k">target:</span> ${esc(data.target)}</div>`;
+  } catch (err) {
+    out.innerHTML = `<span class="err">${esc(err.message)}</span>`;
+  } finally { btn.disabled = false; }
+});
+
+$('statsForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn = e.target.querySelector('button');
+  const out = $('statsOut');
+  btn.disabled = true; out.innerHTML = '';
+  try {
+    const r = await fetch(API + '/stats/' + encodeURIComponent($('code').value.trim()));
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || r.status);
+    const clicks = data.last_clicks.length
+      ? data.last_clicks.map(c =>
+          `<div><span class="k">${esc(c.clicked_at)}</span> · ${esc(c.ip || '—')} · ${esc(c.user_agent || '—')}</div>`
+        ).join('')
+      : '<div class="k">no clicks yet</div>';
+    out.innerHTML =
+      `<div><span class="k">target:</span> ${esc(data.target)}</div>` +
+      `<div><span class="k">total:</span> ${data.total_clicks}</div>` +
+      `<div><span class="k">created:</span> ${esc(data.created_at)}</div>` +
+      `<pre>${clicks}</pre>`;
+  } catch (err) {
+    out.innerHTML = `<span class="err">${esc(err.message)}</span>`;
+  } finally { btn.disabled = false; }
+});
+</script>
+</body>
+</html>

@@ -23,7 +23,7 @@
 **1. Postgres в контейнере:**
 
 ```bash
-docker compose up -d
+docker-compose up
 ```
 
 **2. Виртуальное окружение**
